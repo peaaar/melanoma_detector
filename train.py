@@ -1,73 +1,15 @@
 import os
-import pandas as pd
-from PIL import Image
-from torchvision import transforms, models
-from torch.utils.data import Dataset, DataLoader
-import torch
-import torch.nn as nn
-import torch.optim as optim
 import time
 
-# Config
-PREFIX = "/Users/jinghanli/personalSpace/research/isic 2024"
-IMAGE_DIR = f"{PREFIX}/ISIC_2024_Training_Input"
-BATCH_SIZE = 4
-NUM_EPOCHS = 2
-NUM_CLASSES = 2
-MODEL_PATH = f"{PREFIX}/efficientnet_skin_cancer_checkpoint.pth"
+import torch
 
-# Load labels
-labels_df = pd.read_csv(f"{PREFIX}/ISIC_2024_Training_GroundTruth.csv")
+from utils import get_model, MODEL_PATH, NUM_EPOCHS, LOSS_LOG_PATH, BATCH_SIZE, BEST_MODEL_PATH
 
 
-# Define dataset
-class ISICDataset(Dataset):
-    def __init__(self, dataframe, image_dir, transform=None):
-        self.dataframe = dataframe
-        self.image_dir = image_dir
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.dataframe)
-
-    def __getitem__(self, idx):
-        row = self.dataframe.iloc[idx]
-        image_id = row['isic_id']
-        label = int(row['malignant'])
-        image_path = os.path.join(self.image_dir, image_id + ".jpg")
-
-        image = Image.open(image_path).convert('RGB')
-        if self.transform:
-            image = self.transform(image)
-
-        return image, label
-
-
-def main():
-    # Transforms
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
-
-    # Dataset and loader
-    dataset = ISICDataset(labels_df, IMAGE_DIR, transform=transform)
-    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
-
-    # Load model
-    model = models.efficientnet_b0(pretrained=True)
-    model.classifier[1] = nn.Linear(model.classifier[1].in_features, NUM_CLASSES)
-
-    # Training setup
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
+def train():
+    model, device, criterion, optimizer, train_loader, val_loader, train_dataset = get_model()
 
     # Resume from checkpoint if exists
-    start_epoch = 0
-    start_batch = 0
     if os.path.exists(MODEL_PATH):
         try:
             checkpoint = torch.load(MODEL_PATH)
@@ -76,18 +18,33 @@ def main():
             start_epoch = checkpoint['epoch']
             start_batch = checkpoint.get('batch', 0)
             print(f"Resumed from epoch {start_epoch}, batch {start_batch}")
-        except Exception as e:
-            print(f"Failed to load checkpoint: {e}. Starting from scratch.")
+        except (KeyError, RuntimeError, FileNotFoundError, torch.serialization.pickle.UnpicklingError) as e:
+            print(f"Failed to load checkpoint from {MODEL_PATH}: {e}")
+            start_epoch = 0
+            start_batch = 0
+    else:
+        start_epoch = 0
+        start_batch = 0
 
     # Training loop
+    best_loss = float('inf')
+    patience = 3
+    no_improve_epochs = 0
     for epoch in range(start_epoch, NUM_EPOCHS):
+        # Initialize loss log
+        if not os.path.exists(LOSS_LOG_PATH):
+            with open(LOSS_LOG_PATH, "w") as f:
+                f.write("epoch,train_loss,time_sec,timestamp\n")
+
         model.train()
         running_loss = 0.0
         start_time = time.time()
 
-        for i, (images, labels) in enumerate(dataloader):
+        for i, (images, labels) in enumerate(train_loader):
             if epoch == start_epoch and i < start_batch:
                 continue
+
+            step_start = time.time()
 
             images, labels = images.to(device), labels.to(device)
 
@@ -99,8 +56,10 @@ def main():
 
             running_loss += loss.item() * images.size(0)
 
-            if i % 10 == 0:
-                print(f"Epoch {epoch + 1}, Step {i}, Loss: {loss.item():.4f}")
+            step_time = time.time() - step_start
+            images_processed = (i + 1) * BATCH_SIZE
+            print(f"Epoch {epoch + 1}, Step {i}, Loss: {loss.item():.4f}, Time per step: {step_time:.2f}s, "
+                f"Images processed: {images_processed}")
 
             # Save checkpoint after each batch
             checkpoint = {
@@ -112,31 +71,38 @@ def main():
             }
             torch.save(checkpoint, MODEL_PATH)
 
-        epoch_loss = running_loss / len(dataset)
+        epoch_loss = running_loss / len(train_dataset)
         elapsed_time = time.time() - start_time
-        print(f"Epoch {epoch + 1}/{NUM_EPOCHS}, Loss: {epoch_loss:.4f}, Time: {elapsed_time:.2f}s")
+        print(f"Epoch {epoch+1}/{NUM_EPOCHS}, Loss: {epoch_loss:.4f}, Time: {elapsed_time:.2f}s")
 
+        # Log epoch loss
+        with open(LOSS_LOG_PATH, "a") as f:
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"{epoch+1},{epoch_loss:.6f},{elapsed_time:.2f},{timestamp}\n")
+
+        print(f"Logged loss for epoch {epoch+1} to {LOSS_LOG_PATH}")
+
+        # Early stopping check
+        if epoch_loss < best_loss:
+            best_loss = epoch_loss
+            no_improve_epochs = 0
+            # Save best model checkpoint
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': epoch_loss
+            }, BEST_MODEL_PATH)
+            print(f"Best model saved at epoch {epoch + 1} with loss {epoch_loss:.4f}")
+        else:
+            no_improve_epochs += 1
+            print(f"No improvement for {no_improve_epochs} epoch(s)")
+
+            if no_improve_epochs >= patience:
+                print("Early stopping: training stopped due to no improvement.")
+                break
         # Reset batch count after epoch
         start_batch = 0
 
-    # Load model for inference
-    inference_model = models.efficientnet_b0(pretrained=False)
-    inference_model.classifier[1] = nn.Linear(inference_model.classifier[1].in_features, NUM_CLASSES)
-    checkpoint = torch.load(MODEL_PATH)
-    inference_model.load_state_dict(checkpoint['model_state_dict'])
-    inference_model.eval()
-    inference_model.to(device)
-
-    # Sample inference
-    sample_image_path = os.path.join(IMAGE_DIR, "ISIC_0015670.jpg")
-    sample_image = Image.open(sample_image_path).convert("RGB")
-    sample_tensor = transform(sample_image).unsqueeze(0).to(device)
-
-    with torch.no_grad():
-        output = inference_model(sample_tensor)
-        predicted = torch.argmax(output, dim=1).item()
-        print("Predicted:", "Malignant" if predicted == 1 else "Benign")
-
-
 if __name__ == "__main__":
-    main()
+    train()
