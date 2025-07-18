@@ -92,7 +92,7 @@ def get_model():
     # This makes the loss punish misclassified malignant examples far more than benign ones.
     class_counts = train_df['malignant'].value_counts().sort_index()
     weights = 1.0 / torch.tensor(class_counts.values, dtype=torch.float)  # inverse frequency
-    weights = weights / weights.sum()  # normalize (optional but good)
+    weights = weights / weights.sum()  # normalize 
     criterion = nn.CrossEntropyLoss(weight=weights.to(device))
 
     return model, device, criterion, optimizer, train_loader, val_loader, train_dataset

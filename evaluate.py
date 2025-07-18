@@ -1,6 +1,6 @@
 import torch
 
-from utils import get_model, MODEL_PATH
+from utils import get_model, BEST_MODEL_PATH
 from sklearn.metrics import classification_report, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -34,14 +34,14 @@ def evaluate(model, val_loader, criterion, device):
     return avg_loss, accuracy, all_preds, all_labels
 
 if __name__ == "__main__":
-    checkpoint = torch.load(MODEL_PATH)
+    checkpoint = torch.load(BEST_MODEL_PATH)
     model, device, criterion, _, _, val_loader, _ = get_model()
     model.load_state_dict(checkpoint["model_state_dict"])
 
     val_loss, val_acc, preds, labels = evaluate(model, val_loader, criterion, device)
-    print(f"🧪 Validation Loss: {val_loss:.4f}, Accuracy: {val_acc:.4f}")
+    print(f"Validation Loss: {val_loss:.4f}, Accuracy: {val_acc:.4f}")
 
-    print("\n📊 Classification Report:")
+    print("\nClassification Report:")
     print(classification_report(labels, preds, target_names=["Benign", "Malignant"]))
 
     cm = confusion_matrix(labels, preds)
