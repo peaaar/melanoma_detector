@@ -1,6 +1,6 @@
 import torch
 
-from utils import get_model, BEST_MODEL_PATH
+from utils import get_model, MODEL_PATH, BEST_MODEL_PATH
 from sklearn.metrics import classification_report, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -34,7 +34,10 @@ def evaluate(model, val_loader, criterion, device):
     return avg_loss, accuracy, all_preds, all_labels
 
 if __name__ == "__main__":
-    checkpoint = torch.load(BEST_MODEL_PATH)
+    # checkpoint = torch.load(BEST_MODEL_PATH)
+    # checkpoint = torch.load("/Users/jinghanli/personalSpace/research/isic 2024/efficientnet_focal_best_model_alpha_100.pth")
+    # checkpoint = torch.load("/Users/jinghanli/personalSpace/research/isic 2024/efficientnet_focal_best_model_alpha_200.pth")
+    checkpoint = torch.load("/Users/jinghanli/personalSpace/research/isic 2024/efficientnet_focal_best_model_alpha_200_gamma_0.5.pth")
     model, device, criterion, _, _, val_loader, _ = get_model()
     model.load_state_dict(checkpoint["model_state_dict"])
 

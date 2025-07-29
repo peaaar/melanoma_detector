@@ -9,18 +9,35 @@ from torch.utils.data import DataLoader
 from torchvision import transforms, models
 from torchvision.models import EfficientNet_B0_Weights
 
+from FocalLoss import FocalLoss
 from ISICDataset import ISICDataset
 
 # Config
 PREFIX = "/Users/jinghanli/personalSpace/research/isic 2024"
 IMAGE_DIR = f"{PREFIX}/ISIC_2024_Training_Input"
 BATCH_SIZE = 256
-NUM_EPOCHS = 50
+NUM_EPOCHS = 30
 NUM_CLASSES = 2
-# MODEL_PATH = f"{PREFIX}/efficientnet_skin_cancer_checkpoint.pth"
-MODEL_PATH = f"{PREFIX}/efficientnet_skin_cancer_checkpoint_weighted.pth"
-LOSS_LOG_PATH = f"{PREFIX}/training_loss_log.csv"
-BEST_MODEL_PATH = f"{PREFIX}/efficientnet_best_model.pth"
+
+FOCAL_LOSS_ALPHA = 200
+FOCAL_LOSS_GAMMA = 0.5
+
+
+# MODEL_PATH = f"{PREFIX}/efficientnet_skin_cancer_checkpoint_weighted.pth"
+# LOSS_LOG_PATH = f"{PREFIX}/training_loss_log.csv"
+# BEST_MODEL_PATH = f"{PREFIX}/efficientnet_skin_cancer_checkpoint_weighted.pth"
+#
+# MODEL_PATH = f"{PREFIX}/efficientnet_skin_cancer_checkpoint_focal_loss.pth"
+# LOSS_LOG_PATH = f"{PREFIX}/training_loss_log_facal_loss.csv"
+# BEST_MODEL_PATH = f"{PREFIX}/efficientnet_focal_best_model.pth"
+
+# MODEL_PATH = f"{PREFIX}/efficientnet_skin_cancer_checkpoint_focal_loss_alpha_100.pth"
+# LOSS_LOG_PATH = f"{PREFIX}/training_loss_log_facal_loss_alpha_100.csv"
+# BEST_MODEL_PATH = f"{PREFIX}/efficientnet_focal_best_model_alpha_100.pth"
+
+MODEL_PATH = f"{PREFIX}/efficientnet_skin_cancer_checkpoint_focal_loss_alpha_{FOCAL_LOSS_ALPHA}_gamma_{FOCAL_LOSS_GAMMA}.pth"
+LOSS_LOG_PATH = f"{PREFIX}/training_loss_log_facal_loss_alpha_{FOCAL_LOSS_ALPHA}_gamma_{FOCAL_LOSS_GAMMA}.csv"
+BEST_MODEL_PATH = f"{PREFIX}/efficientnet_focal_best_model_alpha_{FOCAL_LOSS_ALPHA}_gamma_{FOCAL_LOSS_GAMMA}.pth"
 
 def get_model():
     ssl._create_default_https_context = ssl._create_unverified_context
@@ -90,9 +107,19 @@ def get_model():
     model.to(device)
 
     # This makes the loss punish misclassified malignant examples far more than benign ones.
-    class_counts = train_df['malignant'].value_counts().sort_index()
-    weights = 1.0 / torch.tensor(class_counts.values, dtype=torch.float)  # inverse frequency
-    weights = weights / weights.sum()  # normalize 
-    criterion = nn.CrossEntropyLoss(weight=weights.to(device))
+    # class_counts = train_df['malignant'].value_counts().sort_index()
+    # weights = 1.0 / torch.tensor(class_counts.values, dtype=torch.float)  # inverse frequency
+    # weights = weights / weights.sum()  # normalize (optional but good)
+    # criterion = nn.CrossEntropyLoss(weight=weights.to(device))
+
+    # # Try focal loss
+    # criterion = FocalLoss(alpha=1.0, gamma=2.0)  # Tune alpha and gamma later
+
+    # focal loss alpha tuning
+    criterion = FocalLoss(alpha=torch.tensor([1.0, FOCAL_LOSS_ALPHA * 1.0]).to(device), gamma=FOCAL_LOSS_GAMMA * 1.0)
+
+    # weight the malignant class more
+    # criterion = FocalLoss(alpha=torch.tensor([1.0, 50.0]).to(device), gamma=2.0)
+    criterion.to(device)
 
     return model, device, criterion, optimizer, train_loader, val_loader, train_dataset
