@@ -20,9 +20,9 @@ BATCH_SIZE = 256
 NUM_EPOCHS = 30
 NUM_CLASSES = 2
 
-MODEL_PATH = f"{PREFIX}/efficientnet_skin_cancer_checkpoint_weighted_augmented.pth"
-LOSS_LOG_PATH = f"{PREFIX}/training_loss_log_augmented.csv"
-BEST_MODEL_PATH = f"{PREFIX}/efficientnet_skin_cancer_checkpoint_weighted_augmented.pth"
+MODEL_PATH = f"{PREFIX}/efficientnet_skin_cancer_checkpoint_weighted_augmented_random_erasing.pth"
+LOSS_LOG_PATH = f"{PREFIX}/training_loss_log_augmented_random_erasing.csv"
+BEST_MODEL_PATH = f"{PREFIX}/efficientnet_skin_cancer_best_model_weighted_augmented_random_erasing.pth"
 
 def get_model():
     ssl._create_default_https_context = ssl._create_unverified_context
@@ -66,10 +66,21 @@ def get_model():
         val_df.to_csv(val_csv, index=False)
 
     # Transforms
+    # transform = transforms.Compose([
+    #     transforms.Resize((224, 224)),
+    #     transforms.ToTensor(),
+    #     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    # ])
+
+    # RandomErasing
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize([0.485, 0.456, 0.406],
+                             [0.229, 0.224, 0.225]),
+        transforms.RandomErasing(p=0.5, scale=(0.02, 0.15), ratio=(0.3, 3.3))
     ])
 
     # Dataset and loader
