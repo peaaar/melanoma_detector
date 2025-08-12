@@ -104,16 +104,16 @@ if __name__ == "__main__":
     print("\nClassification Report:")
     print(classification_report(labels, preds, target_names=["Benign", "Malignant"]))
 
-    # cm = confusion_matrix(labels, preds)
-    # plt.figure(figsize=(6, 5))
-    # sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
-    #             xticklabels=["Benign", "Malignant"],
-    #             yticklabels=["Benign", "Malignant"])
-    # plt.xlabel("Predicted")
-    # plt.ylabel("Actual")
-    # plt.title("Confusion Matrix")
-    # plt.tight_layout()
-    # plt.show()
+    cm = confusion_matrix(labels, preds)
+    plt.figure(figsize=(6, 5))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
+                xticklabels=["Benign", "Malignant"],
+                yticklabels=["Benign", "Malignant"])
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.title("Confusion Matrix")
+    plt.tight_layout()
+    plt.show()
 
     # eval_pr_auc(labels, probs)
     # sweep_thresholds(labels, probs)
