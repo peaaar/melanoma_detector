@@ -1,16 +1,14 @@
 import os
 import ssl
 
-import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader
 from torchvision import transforms, models
 from torchvision.models import EfficientNet_B0_Weights
 
-from FocalLoss import FocalLoss
 from ISICDataset import ISICDataset, PREFIX, IMAGE_ARCHIVE_DIR, ARCHIVE_PREFIX
 
 # Config
@@ -46,7 +44,7 @@ def get_model():
         train_df.to_csv(train_csv, index=False)
         val_df.to_csv(val_csv, index=False)
 
-    ### Add extra malignant images from archive ###
+    ### 🧩 Add extra malignant images from archive ###
     archive_records = []
     for fname in os.listdir(IMAGE_ARCHIVE_DIR):
         if fname.endswith(".jpg"):
@@ -76,22 +74,23 @@ def get_model():
 
     # Training setup: whole model fine tuning
     model = models.efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT)
-    # replace the classifier for 2-class output (binary classification)
+    # Replace the classifier for 2-class output (binary classification)
     model.classifier[1] = nn.Linear(model.classifier[1].in_features, NUM_CLASSES)
-    # unfreeze all layers for full fine-tuning
+    # Unfreeze all layers for full fine-tuning
     for param in model.features.parameters():
         param.requires_grad = True
 
-    # set optimizer for all trainable parameters
+    # Set optimizer for all trainable parameters
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
 
+    # Device: use MPS on Mac or fallback to CPU
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     model.to(device)
 
-    # makes loss punish misclassified malignant examples far more than benign ones
+    # This makes the loss punish misclassified malignant examples far more than benign ones.
     class_counts = train_df['malignant'].value_counts().sort_index()
     weights = 1.0 / torch.tensor(class_counts.values, dtype=torch.float)  # inverse frequency
-    weights = weights / weights.sum()  # normalize 
+    weights = weights / weights.sum()  # normalize (optional but good)
     criterion = nn.CrossEntropyLoss(weight=weights.to(device))
     criterion.to(device)
 
